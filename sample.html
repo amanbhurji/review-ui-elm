@@ -1,0 +1,90 @@
+<html>
+  <head>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  </head>
+  <body>
+    <div class="container">
+    <div id="controls">
+      <button id="newpaste">New paste</button>
+      <button id="savepaste">Save paste</button>
+    </div>
+    <br/>
+    <div id="paste_content" class="table-responsive">
+      <table class="table table-dark table-sm" style="width:100%">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Paste</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>1</th>
+            <td>This is the first line in the paste.</td>
+          </tr>
+          <tr>
+            <th>2</th>
+            <td>This is the second line in the paste.</td>
+          </tr>
+          <tr class="bg-info">
+            <td colspan="2">
+              <div>
+                This line is a comment!
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <th>3</th>
+            <td style="white-space: nowrap;">This is the third line in the paste, this is a really really really really really really really really really really really really really really really really really really really really really really really really really really really really really really really really really really really really really really really really long line</td>
+          </tr>
+          <tr>
+            <th>4</th>
+            <td>This is the line in the paste.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <pre>
+view1 : Model -> Html Msg
+view1 _ =·
+  div [class "container"]·
+    [ div [id "paste_content", class "table-responsive"]
+        [ table [class "table table-dark table-sm", style "width" "100%"]
+            [ thead []
+                [ tr []
+                    [ th [] [text "#"]
+                    , th [] [text "Paste"]
+                    ]
+                ]
+            , tbody []
+                [ tr []
+                    [ th [] [text "1"]
+                    , td [] [text "This is the first line in the paste."]
+                    ]
+                , tr []
+                    [ th [] [text "2"]
+                    , td [] [text "This is the second line in the paste."]
+                    ]
+                , tr [class "bg-info"]
+                    [ td [colspan 2]·
+                        [ div []
+                            [text "This line is a comment!"]
+                        ]
+                    ]
+                , tr []
+                    [ th [] [text "3"]
+                    , td [] [text "This is the third line in the paste."]
+                    ]
+                , tr []
+                    [ th [] [text "4"]
+                    , td [] [text "This is the third line in the paste."]
+                    ]
+                ]
+
+            ]
+        ]
+    ]
+    </pre>
+    </div>
+  </body>
+</html>
