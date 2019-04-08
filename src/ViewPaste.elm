@@ -1,3 +1,5 @@
+module ViewPaste exposing (main)
+
 import Browser
 import Html exposing (..)
 import Html.Attributes exposing (..)
@@ -17,7 +19,7 @@ main =
 
 type Model = Failure | Loading | Success Paste
 
-type alias Paste = 
+type alias Paste =
   { content : Content
 --  , comments : List Comment
   , id : String
@@ -25,7 +27,7 @@ type alias Paste =
 
 type alias Content = String
 
-type alias Comment = 
+type alias Comment =
   { body : String
   , anchor : Anchor
   }
@@ -102,7 +104,7 @@ viewLine lno line =
 
 -- Http
 
-pasteId = "e63e7c8c-0a60-4111-b50c-55258dffa691"
+pasteId = "447af5e7-5caf-4459-87cf-9deaef99a5bd"
 
 getPasteFromServer : Cmd Msg
 getPasteFromServer =
