@@ -17,7 +17,9 @@ main =
 
 -- Model
 
-type Model = Failure | Loading | Success Paste
+type Model = PasteId | Failure | Loading | Success Paste
+
+type alias PasteId = String
 
 type alias Paste =
   { content : Content

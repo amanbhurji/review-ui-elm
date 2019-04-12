@@ -1,12 +1,14 @@
 module NewPaste exposing (main)
 
 import Browser
+import Browser.Navigation as N
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http
 import Json.Decode
 import Json.Encode as E
+import String exposing (slice)
 
 main =
   Browser.element 
@@ -41,7 +43,7 @@ update msg model =
     GotPasteId result ->
       case result of 
         Ok pasteId ->
-          (Just pasteId, Cmd.none)
+          (Just pasteId, N.load ("viewpaste.html?pid=" ++ (slice 1 -1 pasteId)))
         Err _ ->
           (Just "Error posting data", Cmd.none)
 
