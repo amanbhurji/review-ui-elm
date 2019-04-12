@@ -1,23 +1,28 @@
 module ViewPaste exposing (main)
 
-import Browser
+import Browser exposing (Document, UrlRequest)
+import Browser.Navigation as N
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
-import Http
+import Http exposing (Error(..))
 import Json.Decode exposing (Decoder, field, string, map2)
+import String exposing (dropLeft)
+import Url exposing (Url)
 
 main =
-  Browser.element
+  Browser.application
   { init = init
   , update = update
   , subscriptions = subscriptions
-  , view = view
+  , view = viewDoc
+  , onUrlChange = onUrlChange
+  , onUrlRequest = onUrlRequest
   }
 
 -- Model
 
-type Model = PasteId | Failure | Loading | Success Paste
+type Model = Failure | Loading | Success Paste
 
 type alias PasteId = String
 
@@ -36,11 +41,18 @@ type alias Comment =
 
 type Anchor = TopLevel | Line Int
 
-init : () -> (Model, Cmd Msg)
-init _ =
+init : () -> Url -> N.Key -> (Model, Cmd Msg)
+init _ url _ =
   ( Loading
-  , getPasteFromServer
+  , getPasteFromServer (getPasteIdFromUrl url)
   )
+
+onUrlChange : Url -> Msg
+onUrlChange _ = GotPaste (Err (BadUrl "lmaolmao"))
+
+onUrlRequest : UrlRequest -> Msg
+onUrlRequest _ = GotPaste (Err (BadUrl "lelel"))
+
 
 -- Update
 
@@ -63,6 +75,12 @@ subscriptions : Model -> Sub Msg
 subscriptions model = Sub.none
 
 -- View
+
+viewDoc : Model -> Document Msg
+viewDoc model =
+  { title = "View paste"
+  , body = [ view model ]
+  }
 
 view : Model -> Html Msg
 view model = 
@@ -106,11 +124,9 @@ viewLine lno line =
 
 -- Http
 
-pasteId = "447af5e7-5caf-4459-87cf-9deaef99a5bd"
-
-getPasteFromServer : Cmd Msg
-getPasteFromServer =
-  Http.get 
+getPasteFromServer : PasteId -> Cmd Msg
+getPasteFromServer pasteId =
+  Http.get
     { url = "http://localhost:8081/paste/" ++ pasteId
     , expect = Http.expectJson GotPaste pasteDecoder
     }
@@ -120,3 +136,7 @@ pasteDecoder =
   map2 Paste
     (field "content" string)
     (field "id" string)
+
+getPasteIdFromUrl : Url -> PasteId
+getPasteIdFromUrl url = dropLeft 4 (Maybe.withDefault "failedToParseQuery" url.query)
+

@@ -43,7 +43,7 @@ update msg model =
     GotPasteId result ->
       case result of 
         Ok pasteId ->
-          (Just pasteId, N.load ("viewpaste.html?pid=" ++ (slice 1 -1 pasteId)))
+          (Just pasteId, N.load ("/src/ViewPaste.elm?pid=" ++ (slice 1 -1 pasteId)))
         Err _ ->
           (Just "Error posting data", Cmd.none)
 
@@ -75,3 +75,4 @@ postReview s =
     , body = Http.stringBody "application/json" (E.encode 0 (E.string s))
     , expect = Http.expectString GotPasteId
     }
+
