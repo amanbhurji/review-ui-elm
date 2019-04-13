@@ -6,7 +6,7 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http exposing (Error(..))
-import Json.Decode exposing (Decoder, field, string, map2)
+import Json.Decode as JD
 import String exposing (dropLeft)
 import Url exposing (Url)
 
@@ -28,7 +28,7 @@ type alias PasteId = String
 
 type alias Paste =
   { content : Content
---  , comments : List Comment
+  , comments : List Comment
   , id : String
   }
 
@@ -47,13 +47,6 @@ init _ url _ =
   , getPasteFromServer (getPasteIdFromUrl url)
   )
 
-onUrlChange : Url -> Msg
-onUrlChange _ = GotPaste (Err (BadUrl "lmaolmao"))
-
-onUrlRequest : UrlRequest -> Msg
-onUrlRequest _ = GotPaste (Err (BadUrl "lelel"))
-
-
 -- Update
 
 type Msg = GotPaste (Result Http.Error Paste)
@@ -68,6 +61,12 @@ update msg model =
 
         Err _ ->
           (Failure, Cmd.none)
+
+onUrlChange : Url -> Msg
+onUrlChange _ = GotPaste (Err (BadUrl "lmaolmao"))
+
+onUrlRequest : UrlRequest -> Msg
+onUrlRequest _ = GotPaste (Err (BadUrl "lelel"))
 
 -- Subscriptions
 
@@ -131,11 +130,35 @@ getPasteFromServer pasteId =
     , expect = Http.expectJson GotPaste pasteDecoder
     }
 
-pasteDecoder : Decoder Paste
+pasteDecoder : JD.Decoder Paste
 pasteDecoder =
-  map2 Paste
-    (field "content" string)
-    (field "id" string)
+  JD.map3 Paste
+    (JD.field "content" JD.string)
+    (JD.field "comments" (JD.list commentDecoder))
+    (JD.field "id" JD.string)
+
+commentDecoder : JD.Decoder Comment
+commentDecoder =
+  JD.map2 Comment
+    (JD.field "body" JD.string)
+    (JD.field "anchor" anchorDecoder)
+
+anchorDecoder : JD.Decoder Anchor
+anchorDecoder =
+  JD.oneOf [topLevelDecoder, lineDecoder]
+
+topLevelDecoder : JD.Decoder Anchor
+topLevelDecoder =
+  JD.andThen (\str ->
+    case str of
+      "toplevel"  -> JD.succeed TopLevel
+      unknown     ->
+        JD.fail ("Unexpected value decoding Anchor(TopLevel): " ++ unknown)
+    ) JD.string
+
+lineDecoder : JD.Decoder Anchor
+lineDecoder =
+  JD.map Line (JD.field "line" JD.int)
 
 getPasteIdFromUrl : Url -> PasteId
 getPasteIdFromUrl url = dropLeft 4 (Maybe.withDefault "failedToParseQuery" url.query)
