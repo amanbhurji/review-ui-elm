@@ -7,8 +7,11 @@ import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http exposing (Error(..))
 import Json.Decode as JD
+import List as L
+import Maybe as M
 import String exposing (dropLeft)
 import Url exposing (Url)
+
 
 main =
   Browser.application
@@ -105,14 +108,14 @@ viewPaste paste =
                 , th [] [ text "Paste" ]
                 ]
             ]
-        , viewPasteContent paste.content
+        , tbody []
+            (viewWithComments paste.comments (viewPasteContent paste.content))
         ]
     ]
 
-viewPasteContent : Content -> Html Msg
+viewPasteContent : Content -> List (Html Msg)
 viewPasteContent content = 
-  tbody []
-    (List.indexedMap viewLine (String.lines content))
+  (List.indexedMap viewLine (String.lines content))
 
 viewLine : Int -> String -> Html Msg
 viewLine lno line = 
@@ -120,6 +123,40 @@ viewLine lno line =
     [ th [] [ text (String.fromInt lno) ]
     , td [] [ text line ]
     ]
+
+viewWithComments : List Comment -> List (Html Msg) -> List (Html Msg)
+viewWithComments comments contentrows =
+  L.foldl viewLineComment contentrows comments
+
+viewLineComment : Comment -> List (Html Msg) -> List (Html Msg)
+viewLineComment comment contentrows =
+  let
+    commentrow =
+      tr [ class "bg-info" ]
+        [ td [ colspan 2 ]
+            [ div []
+                [ text comment.body ]
+            ]
+        ]
+
+    maybeCommentNum = lineNumForComment comment
+
+    -- this logic to insert comments is wrong
+    maybeNewContentRows =
+      M.map (\i -> (L.take i contentrows) ++ [commentrow] ++
+        (L.drop ((L.length contentrows) - i + 1) contentrows)) maybeCommentNum
+  in
+    M.withDefault contentrows maybeNewContentRows
+
+lineNumForComment : Comment -> Maybe Int
+lineNumForComment comment =
+  lineNumForAnchor comment.anchor
+
+lineNumForAnchor : Anchor -> Maybe Int
+lineNumForAnchor anchor =
+  case anchor of
+    TopLevel  -> Nothing
+    Line i    -> Just i
 
 -- Http
 
