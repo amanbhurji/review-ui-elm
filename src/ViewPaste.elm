@@ -7,7 +7,7 @@ import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http exposing (Error(..))
 import Json.Decode as JD
-import List as L
+import List as L exposing ((::))
 import Maybe as M
 import String exposing (dropLeft)
 import Url exposing (Url)
@@ -25,24 +25,28 @@ main =
 
 -- Model
 
-type Model = Failure | Loading | Success Paste
+type Model = Failure String | Loading | Success Paste
 
 type alias PasteId = String
 
 type alias Paste =
-  { content : Content
+  { lines : List LineWithComments
   , comments : List Comment
-  , id : String
+  , id : PasteId
   }
 
-type alias Content = String
+type alias LineWithComments =
+  { line : String
+  , lineComments : List Comment
+  }
 
 type alias Comment =
   { body : String
-  , anchor : Anchor
   }
 
 type Anchor = TopLevel | Line Int
+
+type alias Content = String
 
 init : () -> Url -> N.Key -> (Model, Cmd Msg)
 init _ url _ =
@@ -62,14 +66,14 @@ update msg model =
         Ok paste ->
           (Success paste, Cmd.none)
 
-        Err _ ->
-          (Failure, Cmd.none)
+        Err err ->
+          (Failure (Debug.toString err), Cmd.none)
 
 onUrlChange : Url -> Msg
-onUrlChange _ = GotPaste (Err (BadUrl "lmaolmao"))
+onUrlChange url = GotPaste (Err (BadUrl ("You cant change the url! " ++ (Url.toString url))))
 
 onUrlRequest : UrlRequest -> Msg
-onUrlRequest _ = GotPaste (Err (BadUrl "lelel"))
+onUrlRequest url = GotPaste (Err (BadUrl ("You cant request a url! " ++ (Debug.toString url))))
 
 -- Subscriptions
 
@@ -85,11 +89,11 @@ viewDoc model =
   }
 
 view : Model -> Html Msg
-view model = 
+view model =
   div [ class "container" ]
     [ case model of
-        Failure ->
-          div [] [ text "Failed to load paste!" ]
+        Failure s ->
+          div [] [ text ("Failed to load paste! - " ++ s) ]
 
         Loading ->
           div [] [ text "Loading ..." ]
@@ -109,16 +113,46 @@ viewPaste paste =
                 ]
             ]
         , tbody []
-            (viewWithComments paste.comments (viewPasteContent paste.content))
+--            (viewWithComments paste.comments (viewPasteContent paste.content))
+            (viewPasteBody paste.lines)
+-- Add support to view top level comments
         ]
     ]
 
+viewPasteBody : List LineWithComments -> List (Html Msg)
+viewPasteBody lines =
+  L.concat (L.indexedMap viewLineWithComments lines)
+
 viewPasteContent : Content -> List (Html Msg)
 viewPasteContent content = 
-  (List.indexedMap viewLine (String.lines content))
+  (L.indexedMap viewLine (String.lines content))
+
+viewLineWithComments : Int -> LineWithComments -> List (Html Msg)
+viewLineWithComments lno lineWithComments =
+  (viewLine lno lineWithComments.line) :: (L.map viewLineComment lineWithComments.lineComments)
 
 viewLine : Int -> String -> Html Msg
-viewLine lno line = 
+viewLine lno line =
+  let
+    lno_str = String.fromInt lno
+  in
+    tr []
+      [ th [] [ a [ href ("#" ++ lno_str) ] [ text lno_str ] ]
+      , td [] [ text line ]
+      ]
+
+viewLineComment : Comment -> Html Msg
+viewLineComment comment =
+  tr [ class "bg-info" ]
+    [ td [ colspan 2 ]
+        [ div []
+            [ text comment.body ]
+        ]
+    ]
+
+{-
+viewLine : Int -> String -> Html Msg
+viewLine lno line =
   tr []
     [ th [] [ text (String.fromInt lno) ]
     , td [] [ text line ]
@@ -151,6 +185,7 @@ viewLineComment comment contentrows =
 lineNumForComment : Comment -> Maybe Int
 lineNumForComment comment =
   lineNumForAnchor comment.anchor
+-}
 
 lineNumForAnchor : Anchor -> Maybe Int
 lineNumForAnchor anchor =
@@ -170,16 +205,22 @@ getPasteFromServer pasteId =
 pasteDecoder : JD.Decoder Paste
 pasteDecoder =
   JD.map3 Paste
-    (JD.field "content" JD.string)
+    (JD.field "lines" (JD.list lineDecoder))
     (JD.field "comments" (JD.list commentDecoder))
     (JD.field "id" JD.string)
 
+lineDecoder : JD.Decoder LineWithComments
+lineDecoder =
+  JD.map2 LineWithComments
+    (JD.field "line" JD.string)
+    (JD.field "comments" (JD.list commentDecoder))
+
 commentDecoder : JD.Decoder Comment
 commentDecoder =
-  JD.map2 Comment
+  JD.map Comment
     (JD.field "body" JD.string)
-    (JD.field "anchor" anchorDecoder)
 
+{-
 anchorDecoder : JD.Decoder Anchor
 anchorDecoder =
   JD.oneOf [topLevelDecoder, lineDecoder]
@@ -196,6 +237,7 @@ topLevelDecoder =
 lineDecoder : JD.Decoder Anchor
 lineDecoder =
   JD.map Line (JD.field "line" JD.int)
+-}
 
 getPasteIdFromUrl : Url -> PasteId
 getPasteIdFromUrl url = dropLeft 4 (Maybe.withDefault "failedToParseQuery" url.query)
