@@ -25,9 +25,15 @@ main =
 
 -- Model
 
-type Model = Failure String | Loading | Success Paste
+type Model = Failure String | Loading | Success Root
 
 type alias PasteId = String
+
+type alias Root =
+  { paste : Paste
+  , newComment : Maybe Comment
+  , createNewComment : Maybe Anchor
+  }
 
 type alias Paste =
   { lines : List LineWithComments
@@ -56,7 +62,11 @@ init _ url _ =
 
 -- Update
 
-type Msg = GotPaste (Result Http.Error Paste)
+type Msg
+  = GotPaste (Result Http.Error Paste)
+  | NewComment Anchor
+  | SetCommentData String
+  | MkComment
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -64,10 +74,49 @@ update msg model =
     GotPaste result ->
       case result of
         Ok paste ->
-          (Success paste, Cmd.none)
+          ( Success
+              { paste = paste
+              , newComment = Nothing
+              , createNewComment = Nothing
+              }
+          , Cmd.none
+          )
 
         Err err ->
           (Failure (Debug.toString err), Cmd.none)
+
+    NewComment anchor ->
+      case anchor of
+        TopLevel ->
+          Debug.todo "ok"
+
+        Line lno ->
+          case model of
+            Success root ->
+              ( Success { root | createNewComment = Just anchor }
+              , Cmd.none
+              )
+            _ -> Debug.todo "todo throw error"
+
+    SetCommentData s ->
+      case model of
+        Success root ->
+          ( Success { root | newComment = Just { body = s } }
+          , Cmd.none
+          )
+        _ -> Debug.todo "todo throw error"
+
+    MkComment ->
+      case model of
+        Success root ->
+          ( Success
+              { root |
+                  createNewComment = Nothing,
+                  newComment = Nothing
+              }
+          , postComment root
+          )
+        _ -> Debug.todo "todo throw error"
 
 onUrlChange : Url -> Msg
 onUrlChange url = GotPaste (Err (BadUrl ("You cant change the url! " ++ (Url.toString url))))
@@ -98,12 +147,12 @@ view model =
         Loading ->
           div [] [ text "Loading ..." ]
 
-        Success paste ->
-          viewPaste paste
+        Success root ->
+          viewPaste root
     ]
 
-viewPaste : Paste -> Html Msg
-viewPaste paste = 
+viewPaste : Root -> Html Msg
+viewPaste root =
   div [ id "paste_content", class "table-responsive" ]
     [ table [ class "table table-dark table-sm", style "width" "100%" ]
         [ thead []
@@ -113,23 +162,28 @@ viewPaste paste =
                 ]
             ]
         , tbody []
---            (viewWithComments paste.comments (viewPasteContent paste.content))
-            (viewPasteBody paste.lines)
+            (viewPasteBody root)
 -- Add support to view top level comments
         ]
     ]
 
-viewPasteBody : List LineWithComments -> List (Html Msg)
-viewPasteBody lines =
-  L.concat (L.indexedMap viewLineWithComments lines)
+viewPasteBody : Root -> List (Html Msg)
+viewPasteBody root =
+  let
+    f = viewLineWithComments root.createNewComment root.newComment
+  in
+    L.concat (L.indexedMap f root.paste.lines)
 
-viewPasteContent : Content -> List (Html Msg)
-viewPasteContent content = 
-  (L.indexedMap viewLine (String.lines content))
-
-viewLineWithComments : Int -> LineWithComments -> List (Html Msg)
-viewLineWithComments lno lineWithComments =
-  (viewLine lno lineWithComments.line) :: (L.map viewLineComment lineWithComments.lineComments)
+viewLineWithComments :
+  Maybe Anchor ->
+  Maybe Comment ->
+  Int ->
+  LineWithComments ->
+  List (Html Msg)
+viewLineWithComments maybeAnchor maybeComment lno lineWithComments =
+  (viewLine lno lineWithComments.line)
+    :: (viewNewComment lno maybeAnchor maybeComment)
+    ++ (L.map viewLineComment lineWithComments.lineComments)
 
 viewLine : Int -> String -> Html Msg
 viewLine lno line =
@@ -141,6 +195,25 @@ viewLine lno line =
       , td [] [ text line ]
       ]
 
+-- returning List coz too lazy to handle returning maybe
+viewNewComment : Int -> Maybe Anchor -> Maybe Comment -> List (Html Msg)
+viewNewComment lno maybeAnchor maybeComment =
+  let
+    anchorLine = M.andThen lineNumForAnchor maybeAnchor
+  in
+    if anchorLine == (Just lno) then
+      [ viewCommentTextBox maybeComment ]
+    else
+      []
+
+viewCommentTextBox : Maybe Comment -> Html Msg
+viewCommentTextBox maybeComment =
+  case maybeComment of
+    Nothing ->
+      Debug.todo "todo create empty new comment html"
+    Just comment ->
+      Debug.todo "todo create populated new"
+
 viewLineComment : Comment -> Html Msg
 viewLineComment comment =
   tr [ class "bg-info" ]
@@ -149,43 +222,6 @@ viewLineComment comment =
             [ text comment.body ]
         ]
     ]
-
-{-
-viewLine : Int -> String -> Html Msg
-viewLine lno line =
-  tr []
-    [ th [] [ text (String.fromInt lno) ]
-    , td [] [ text line ]
-    ]
-
-viewWithComments : List Comment -> List (Html Msg) -> List (Html Msg)
-viewWithComments comments contentrows =
-  L.foldl viewLineComment contentrows comments
-
-viewLineComment : Comment -> List (Html Msg) -> List (Html Msg)
-viewLineComment comment contentrows =
-  let
-    commentrow =
-      tr [ class "bg-info" ]
-        [ td [ colspan 2 ]
-            [ div []
-                [ text comment.body ]
-            ]
-        ]
-
-    maybeCommentNum = lineNumForComment comment
-
-    -- this logic to insert comments is wrong
-    maybeNewContentRows =
-      M.map (\i -> (L.take i contentrows) ++ [commentrow] ++
-        (L.drop ((L.length contentrows) - i + 1) contentrows)) maybeCommentNum
-  in
-    M.withDefault contentrows maybeNewContentRows
-
-lineNumForComment : Comment -> Maybe Int
-lineNumForComment comment =
-  lineNumForAnchor comment.anchor
--}
 
 lineNumForAnchor : Anchor -> Maybe Int
 lineNumForAnchor anchor =
@@ -201,6 +237,11 @@ getPasteFromServer pasteId =
     { url = "http://localhost:8081/paste/" ++ pasteId
     , expect = Http.expectJson GotPaste pasteDecoder
     }
+
+postComment : Root -> Cmd Msg
+postComment = Debug.todo "todo4"
+
+-- Decoders
 
 pasteDecoder : JD.Decoder Paste
 pasteDecoder =

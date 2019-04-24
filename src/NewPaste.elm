@@ -55,7 +55,7 @@ subscriptions model = Sub.none
 -- View
 
 view : Model -> Html Msg
-view model = 
+view model =
   div [ class "container-fluid h-100 bg-warning" ]
     [ div [ class "d-flex flex-column h-100 bg-danger p-4" ]
         [ div [ class "row flex-grow-1 bg-dark" ]
