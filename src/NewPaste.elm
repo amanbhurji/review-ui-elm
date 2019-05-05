@@ -41,7 +41,7 @@ update msg model =
         Nothing ->
           (Just "Error add some data", Cmd.none)
     GotPasteId result ->
-      case result of 
+      case result of
         Ok pasteId ->
           (Just pasteId, N.load ("/src/ViewPaste.elm?pid=" ++ (slice 1 -1 pasteId)))
         Err _ ->

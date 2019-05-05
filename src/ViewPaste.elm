@@ -1,12 +1,13 @@
 module ViewPaste exposing (main)
 
 import Browser exposing (Document, UrlRequest)
-import Browser.Navigation as N
+import Browser.Navigation as Nav
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http exposing (Error(..))
 import Json.Decode as JD
+import Json.Encode as JE
 import List as L exposing ((::))
 import Maybe as M
 import String exposing (dropLeft)
@@ -20,7 +21,7 @@ main =
   , subscriptions = subscriptions
   , view = viewDoc
   , onUrlChange = onUrlChange
-  , onUrlRequest = onUrlRequest
+  , onUrlRequest = ClickedLink
   }
 
 -- Model
@@ -32,7 +33,7 @@ type alias PasteId = String
 type alias Root =
   { paste : Paste
   , newComment : Maybe Comment
-  , createNewComment : Maybe Anchor
+  , commentAnchor : Maybe Anchor
   }
 
 type alias Paste =
@@ -50,11 +51,44 @@ type alias Comment =
   { body : String
   }
 
-type Anchor = TopLevel | Line Int
+-- add support for top level comments
+type Anchor = Line Int
 
 type alias Content = String
 
-init : () -> Url -> N.Key -> (Model, Cmd Msg)
+moveCommentToPaste : Root -> Root
+moveCommentToPaste root =
+  let
+    get xs n = L.head (L.drop n xs)
+    replace xs newN n = L.take n xs ++ newN :: L.drop (n+1) xs
+    lno = M.map lineNumForAnchor root.commentAnchor
+    lineToUpdate = M.andThen (get root.paste.lines) lno
+    newCommentAsList = M.withDefault [] (M.map L.singleton root.newComment)
+    updatedLine = M.map
+      ( \x -> { x | lineComments = newCommentAsList ++ x.lineComments } )
+      lineToUpdate
+    printRoot = Debug.log "root" root
+    printAnchor = Debug.log "lno" lno
+    printOgLine = Debug.log "ogLine" lineToUpdate
+    printUpdatedLine = Debug.log "updatedLine" updatedLine
+    ogPaste = root.paste
+    updatedPaste =
+      M.andThen ( \l ->
+        M.map
+          ( \n ->
+            { ogPaste | lines = replace ogPaste.lines l n }
+          )
+          lno
+      ) updatedLine
+    newOrOg = M.withDefault ogPaste updatedPaste
+  in
+    { root |
+        paste = newOrOg,
+        commentAnchor = Nothing,
+        newComment = Nothing
+    }
+
+init : () -> Url -> Nav.Key -> (Model, Cmd Msg)
 init _ url _ =
   ( Loading
   , getPasteFromServer (getPasteIdFromUrl url)
@@ -67,17 +101,36 @@ type Msg
   | NewComment Anchor
   | SetCommentData String
   | MkComment
+  | ClickedLink UrlRequest
+  | Commented (Result Http.Error ())
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
+-- refactor - case ( msg, model ) of
   case msg of
+    ClickedLink urlRequest ->
+      case urlRequest of
+        Browser.Internal url ->
+          case url.fragment of
+            Nothing ->
+              -- If we got a link that didn't include a fragment,
+              -- it's from one of those (href="") attributes that
+              -- we are using for new comments. There might be
+              -- better options available.
+              ( model, Cmd.none )
+
+            Just _ ->
+              ( model, Cmd.none )
+        Browser.External href ->
+          ( model, Nav.load href )
+
     GotPaste result ->
       case result of
         Ok paste ->
           ( Success
               { paste = paste
               , newComment = Nothing
-              , createNewComment = Nothing
+              , commentAnchor = Nothing
               }
           , Cmd.none
           )
@@ -87,16 +140,13 @@ update msg model =
 
     NewComment anchor ->
       case anchor of
-        TopLevel ->
-          Debug.todo "ok"
-
         Line lno ->
           case model of
             Success root ->
-              ( Success { root | createNewComment = Just anchor }
+              ( Success { root | commentAnchor = Just anchor }
               , Cmd.none
               )
-            _ -> Debug.todo "todo throw error"
+            _ -> Debug.todo ("todo throw error " ++ Debug.toString model)
 
     SetCommentData s ->
       case model of
@@ -110,19 +160,59 @@ update msg model =
       case model of
         Success root ->
           ( Success
-              { root |
-                  createNewComment = Nothing,
-                  newComment = Nothing
-              }
+              (moveCommentToPaste root)
+              --{ root |
+              --    commentAnchor = Nothing,
+              --    newComment = Nothing
+              --}
           , postComment root
           )
         _ -> Debug.todo "todo throw error"
 
+    Commented result ->
+      case result of
+        Ok _ ->
+          case model of
+            Success root ->
+              -- Move comment to paste before reseting models
+              ( Success root
+                  --(moveCommentToPaste root)
+                  --{ root |
+                  --    commentAnchor = Nothing,
+                  --    newComment = Nothing
+                  --}
+              , Cmd.none
+              )
+            _ -> Debug.todo "todo posted comment"
+        Err _ -> (model, Cmd.none)
+
+lineNumForAnchor : Anchor -> Int
+lineNumForAnchor (Line n) = n
+
+{-
+lineNumForAnchor : Anchor -> Maybe Int
+lineNumForAnchor anchor =
+  case anchor of
+    TopLevel  -> Nothing
+    Line i    -> Just i
+-}
+
 onUrlChange : Url -> Msg
 onUrlChange url = GotPaste (Err (BadUrl ("You cant change the url! " ++ (Url.toString url))))
 
-onUrlRequest : UrlRequest -> Msg
-onUrlRequest url = GotPaste (Err (BadUrl ("You cant request a url! " ++ (Debug.toString url))))
+-- onUrlRequest : UrlRequest -> Msg
+-- onUrlRequest url =
+--    GotPaste (Err (BadUrl ("You cant request a url! " ++ (Debug.toString url))))
+
+onClickNoBubble : msg -> Html.Attribute msg
+onClickNoBubble message =
+    Html.Events.custom "click"
+      (JD.succeed
+          { message = message
+          , stopPropagation = True
+          , preventDefault = True
+          }
+      )
 
 -- Subscriptions
 
@@ -170,7 +260,7 @@ viewPaste root =
 viewPasteBody : Root -> List (Html Msg)
 viewPasteBody root =
   let
-    f = viewLineWithComments root.createNewComment root.newComment
+    f = viewLineWithComments root.commentAnchor root.newComment
   in
     L.concat (L.indexedMap f root.paste.lines)
 
@@ -191,7 +281,14 @@ viewLine lno line =
     lno_str = String.fromInt lno
   in
     tr []
-      [ th [] [ a [ href ("#" ++ lno_str) ] [ text lno_str ] ]
+      [ th []
+          [ a
+              --[ href ("#" ++ lno_str)
+              [ href ""
+              , onClickNoBubble (NewComment (Line lno))
+              ]
+              [ text lno_str ]
+          ]
       , td [] [ text line ]
       ]
 
@@ -199,7 +296,7 @@ viewLine lno line =
 viewNewComment : Int -> Maybe Anchor -> Maybe Comment -> List (Html Msg)
 viewNewComment lno maybeAnchor maybeComment =
   let
-    anchorLine = M.andThen lineNumForAnchor maybeAnchor
+    anchorLine = M.map lineNumForAnchor maybeAnchor
   in
     if anchorLine == (Just lno) then
       [ viewCommentTextBox maybeComment ]
@@ -208,11 +305,21 @@ viewNewComment lno maybeAnchor maybeComment =
 
 viewCommentTextBox : Maybe Comment -> Html Msg
 viewCommentTextBox maybeComment =
-  case maybeComment of
-    Nothing ->
-      Debug.todo "todo create empty new comment html"
-    Just comment ->
-      Debug.todo "todo create populated new"
+  tr [ class "foo" ]
+    [ td [ colspan 2 ]
+        [ div []
+            [ textarea
+                [ class "text-white"
+                , onInput SetCommentData
+                , style "background" "0 0"
+                , style "border" "0"
+                ]
+                (M.withDefault [] (M.map (\cmt -> [ text cmt.body ]) maybeComment))
+            , br [] []
+            , button [ class "btn", onClick MkComment ] [ text "Save" ]
+            ]
+        ]
+    ]
 
 viewLineComment : Comment -> Html Msg
 viewLineComment comment =
@@ -222,12 +329,6 @@ viewLineComment comment =
             [ text comment.body ]
         ]
     ]
-
-lineNumForAnchor : Anchor -> Maybe Int
-lineNumForAnchor anchor =
-  case anchor of
-    TopLevel  -> Nothing
-    Line i    -> Just i
 
 -- Http
 
@@ -239,7 +340,21 @@ getPasteFromServer pasteId =
     }
 
 postComment : Root -> Cmd Msg
-postComment = Debug.todo "todo4"
+postComment root =
+  let
+    lno = M.map lineNumForAnchor root.commentAnchor
+    qparam = M.map (\n -> "?line=" ++ (String.fromInt n)) lno
+    pasteUrl =
+      "http://localhost:8081/paste/" ++ root.paste.id ++ "/comment" ++ (M.withDefault "" qparam)
+  in
+    Http.post
+      { url = pasteUrl
+      , body =
+          Http.stringBody
+            "application/json"
+            (JE.encode 0 (JE.string (M.withDefault {body=""} root.newComment).body))
+      , expect = Http.expectWhatever Commented
+      }
 
 -- Decoders
 
